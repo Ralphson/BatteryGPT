@@ -56,7 +56,7 @@ if __name__=="__main__":
                         help='freq for time features encoding, '
                             'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
                             'you can also use more detailed freq like 15min or 3h')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--checkpoints', type=str, default='./cache/', help='location of model checkpoints')
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -85,11 +85,11 @@ if __name__=="__main__":
     parser.add_argument('--prompt_domain', type=int, default=0, help='stride')
 
     # optimization
-    parser.add_argument('--num_workers', type=int, default=1, help='data loader num workers')  # 10
+    parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')  # 10
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='batch size of train input data')    # 32
+    parser.add_argument('--batch_size', type=int, default=256, help='batch size of train input data')    # 32
     parser.add_argument('--eval_batch_size', type=int, default=8, help='batch size of model evaluation')
     parser.add_argument('--patience', type=int, default=5, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
@@ -105,7 +105,7 @@ if __name__=="__main__":
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
     # accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
-    accelerator = Accelerator(device_placement=False, mixed_precision='bf16')
+    accelerator = Accelerator(mixed_precision='bf16', device_placement=False)
 
     for ii in range(args.itr):
         # setting record of experiments
@@ -126,6 +126,8 @@ if __name__=="__main__":
             args.factor,
             args.embed,
             args.des, ii)
+        print('Args in experiment:')
+        print(args)
 
         train_data, train_loader = data_provider(args, args.data_pretrain, args.data_path_pretrain, True, 'train')
         vali_data, vali_loader = data_provider(args, args.data_pretrain, args.data_path_pretrain, True, 'val')
