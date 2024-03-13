@@ -9,6 +9,7 @@ from tqdm import tqdm
 from models import Autoformer, DLinear, TimeLLM
 
 from data_provider.data_factory import data_provider
+from log import set_logger
 import time
 import random
 import numpy as np
@@ -24,6 +25,7 @@ from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, lo
 if __name__=="__main__":
 
     parser = argparse.ArgumentParser(description='Time-LLM')
+    filetime = time.strftime('%Y%m%d%H%M', time.localtime())
 
     fix_seed = 2021
     random.seed(fix_seed)
@@ -31,17 +33,18 @@ if __name__=="__main__":
     np.random.seed(fix_seed)
 
     # basic config
-    parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
+    parser.add_argument('--task_name', type=str, required=False, default='long_term_forecast',
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
-    parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
-    parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
-    parser.add_argument('--model_comment', type=str, required=True, default='none', help='prefix when saving test results')
-    parser.add_argument('--model', type=str, required=True, default='Autoformer',
+    parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
+    parser.add_argument('--model_id', type=str, required=False, default='ETTh1_96_96', help='model id')
+    parser.add_argument('--model_comment', type=str, required=False, default='TimeLLM-ETTh1', help='prefix when saving test results')
+    parser.add_argument('--model', type=str, required=False, default='TimeLLM',
                         help='model name, options: [Autoformer, DLinear]')
-    parser.add_argument('--seed', type=int, default=2021, help='random seed')
+    parser.add_argument('--seed', type=int, default=fix_seed, help='random seed')
+    parser.add_argument('--filetime', type=str, default=filetime)
 
     # data loader
-    parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
+    parser.add_argument('--data', type=str, required=False, default='ETTh1', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./dataset', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
@@ -54,7 +57,9 @@ if __name__=="__main__":
                         help='freq for time features encoding, '
                              'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
                              'you can also use more detailed freq like 15min or 3h')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--checkpoints', type=str, default='./cache/', help='location of model checkpoints')
+    parser.add_argument('--logger', type=str, default='./logs')
+
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -66,13 +71,13 @@ if __name__=="__main__":
     parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=7, help='output size')
-    parser.add_argument('--d_model', type=int, default=16, help='dimension of model')
+    parser.add_argument('--d_model', type=int, default=32, help='dimension of model')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=32, help='dimension of fcn')
+    parser.add_argument('--d_ff', type=int, default=128, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
-    parser.add_argument('--factor', type=int, default=1, help='attn factor')
+    parser.add_argument('--factor', type=int, default=3, help='attn factor')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
@@ -85,26 +90,52 @@ if __name__=="__main__":
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
-    parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
+    parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
     parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+    parser.add_argument('--batch_size', type=int, default=24, help='batch size of train input data')
     parser.add_argument('--eval_batch_size', type=int, default=8, help='batch size of model evaluation')
     parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
-    parser.add_argument('--des', type=str, default='test', help='exp description')
+    parser.add_argument('--learning_rate', type=float, default=0.01, help='optimizer learning rate')
+    parser.add_argument('--des', type=str, default='Exp', help='exp description')
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--pct_start', type=float, default=0.2, help='pct_start')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
-    parser.add_argument('--llm_layers', type=int, default=6)
+    parser.add_argument('--llm_layers', type=int, default=32)
     parser.add_argument('--percent', type=int, default=100)
 
     args = parser.parse_args()
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
     accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
+    # accelerator = Accelerator(mixed_precision='bf16')
+    
+
+    # setting record of experiments
+    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
+        args.task_name,
+        args.model_id,
+        args.model,
+        args.data,
+        args.features,
+        args.seq_len,
+        args.label_len,
+        args.pred_len,
+        args.d_model,
+        args.n_heads,
+        args.e_layers,
+        args.d_layers,
+        args.d_ff,
+        args.factor,
+        args.embed,
+        args.des, 
+        args.itr)
+    # 重定向到屏幕和文件 
+    set_logger(args.logger + '/' + setting + '/' + filetime + '.log')
+
 
     for ii in range(args.itr):
+        
         # setting record of experiments
         setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
             args.task_name,
@@ -122,8 +153,11 @@ if __name__=="__main__":
             args.d_ff,
             args.factor,
             args.embed,
-            args.des, ii)
-
+            args.des, 
+            ii)
+        print('Args in experiment:')
+        print(args)
+        
         train_data, train_loader = data_provider(args, 'train')
         vali_data, vali_loader = data_provider(args, 'val')
         test_data, test_loader = data_provider(args, 'test')
@@ -146,6 +180,7 @@ if __name__=="__main__":
         train_steps = len(train_loader)
         early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience)
 
+        # 找到模型中可以用来训练的参数
         trained_parameters = []
         for p in model.parameters():
             if p.requires_grad is True:
@@ -265,7 +300,7 @@ if __name__=="__main__":
                 accelerator.print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
     accelerator.wait_for_everyone()
-    if accelerator.is_local_main_process:
-        path = './checkpoints'  # unique checkpoint saving path
-        del_files(path)  # delete checkpoint files
-        accelerator.print('success delete checkpoints')
+    # if accelerator.is_local_main_process:
+    #     path = './cache'  # unique checkpoint saving path
+    #     del_files(path)  # delete checkpoint files
+    #     accelerator.print('success delete checkpoints')
