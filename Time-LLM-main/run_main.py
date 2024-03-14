@@ -65,9 +65,9 @@ if __name__=="__main__":
     parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
 
     # model define
-    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
+    parser.add_argument('--enc_in', type=int, default=11, help='encoder input size')
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
-    parser.add_argument('--c_out', type=int, default=7, help='output size')
+    parser.add_argument('--c_out', type=int, default=1, help='output size')
     parser.add_argument('--d_model', type=int, default=16, help='dimension of model')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
@@ -89,7 +89,7 @@ if __name__=="__main__":
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+    parser.add_argument('--batch_size', type=int, default=8, help='batch size of train input data')
     parser.add_argument('--eval_batch_size', type=int, default=8, help='batch size of model evaluation')
     parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='optimizer learning rate')
@@ -199,6 +199,14 @@ if __name__=="__main__":
         criterion = smape_loss()
         mae_metric = nn.L1Loss()
 
+        args.frequency_map = {
+            'Yearly': 1,
+            'Quarterly': 4,
+            'Monthly': 12,
+            'Weekly': 1,
+            'Daily': 1,
+            'Hourly': 24
+        }
         train_loader, vali_loader, test_loader, model, model_optim, scheduler = accelerator.prepare(
             train_loader, vali_loader, test_loader, model, model_optim, scheduler)
 

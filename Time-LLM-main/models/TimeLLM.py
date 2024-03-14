@@ -100,11 +100,15 @@ class Model(nn.Module):
 
         self.normalize_layers = Normalize(configs.enc_in, affine=False)
 
+        self.out_Linear = nn.Linear(configs.enc_in, configs.c_out)
+
+
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]
         return None
+
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
 
@@ -161,6 +165,7 @@ class Model(nn.Module):
 
         dec_out = self.normalize_layers(dec_out, 'denorm')
 
+        dec_out = self.out_Linear(dec_out)
         return dec_out
 
     def calcute_lags(self, x_enc):

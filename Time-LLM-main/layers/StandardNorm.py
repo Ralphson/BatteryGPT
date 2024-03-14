@@ -28,7 +28,7 @@ class Normalize(nn.Module):
             raise NotImplementedError
         return x
 
-    def _init_params(self):
+    def _init_params(self): # 默认关闭
         # initialize RevIN params: (C,)
         self.affine_weight = nn.Parameter(torch.ones(self.num_features))
         self.affine_bias = nn.Parameter(torch.zeros(self.num_features))
