@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_Masked_Battery
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -8,6 +8,7 @@ data_dict = {
     'ETTm2': Dataset_ETT_minute,
     'custom': Dataset_Custom,
     'm4': Dataset_M4,
+    'masked_battery': Dataset_Masked_Battery,
 }
 
 
@@ -39,6 +40,21 @@ def data_provider(args, flag):
             timeenc=timeenc,
             freq=freq,
             seasonal_patterns=args.seasonal_patterns
+        )
+    elif args.data == 'my':
+        data_set = Data(
+            root_path=args.root_path,
+            data_path=args.data_path,
+            flag=flag,
+            size=[args.seq_len, args.label_len, args.pred_len],
+            features=args.features,
+            target=args.target,
+            timeenc=timeenc,
+            freq=freq,
+            percent=percent,
+            seasonal_patterns=args.seasonal_patterns,
+            cutting_rate=args.cutting_rate,
+            drop_bid=args.drop_bid
         )
     else:
         data_set = Data(

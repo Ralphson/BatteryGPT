@@ -1,6 +1,7 @@
 # 忽略data文件夹 
 pretrained_model/
 cache/
+dataset/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

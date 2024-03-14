@@ -1,33 +1,38 @@
-import time
-import random
-import numpy as np
-import os
 import argparse
 import torch
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate import DistributedDataParallelKwargs
-from torch import nn, optim
+from torch import optim
 from torch.optim import lr_scheduler
-from tqdm import tqdm
 
+from data_provider.m4 import M4Meta
 from models import Autoformer, DLinear, TimeLLM
-from log import set_logger
-
 
 from data_provider.data_factory import data_provider
-from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.losses import smape_loss, mase_loss, mape_loss
+import time
+import random
+import numpy as np
+import pandas
 
-
+from utils.losses import smape_loss
+from utils.m4_summary import M4Summary
+import os
 
 os.environ['CURL_CA_BUNDLE'] = ''
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
 
+from utils.tools import del_files, EarlyStopping, adjust_learning_rate, load_content, test
+
 
 
 if __name__=="__main__":
-    filetime = time.strftime('%Y%m%d%H%M', time.localtime())
+
     parser = argparse.ArgumentParser(description='Time-LLM')
+
+    fix_seed = 2021
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
 
     # basic config
     parser.add_argument('--task_name', type=str, required=False, default='long_term_forecast',
@@ -37,31 +42,28 @@ if __name__=="__main__":
     parser.add_argument('--model_comment', type=str, required=False, default='none', help='prefix when saving test results')
     parser.add_argument('--model', type=str, required=False, default='TimeLLM',
                         help='model name, options: [Autoformer, DLinear]')
-    parser.add_argument('--seed', type=int, default=42, help='random seed')
+    parser.add_argument('--seed', type=int, default=0, help='random seed')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='masked_battery', help='dataset type')
-    parser.add_argument('--root_path', type=str, default='./dataset/my', help='root path of the data file')
-    parser.add_argument('--data_path', type=str, default='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv', help='data file')
-    parser.add_argument('--drop_bid', type=int, default=0)
-    parser.add_argument('--cutting_rate', type=float, default=1.2)
+    parser.add_argument('--data', type=str, required=False, default='m4', help='dataset type')
+    parser.add_argument('--root_path', type=str, default='./dataset/m4', help='root path of the data file')
+    parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; '
-                             'M:multivariate predict multivariate, S: univariate predict univariate, '
-                             'MS:multivariate predict univariate')
+                            'M:multivariate predict multivariate, S: univariate predict univariate, '
+                            'MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--loader', type=str, default='modal', help='dataset type')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, '
-                             'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
-                             'you can also use more detailed freq like 15min or 3h')
-    parser.add_argument('--checkpoints', type=str, default='./cache/', help='location of model checkpoints')
-    parser.add_argument('--logger', type=str, default='./logs', help='log folder')
+                            'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
+                            'you can also use more detailed freq like 15min or 3h')
+    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
 
     # forecasting task
-    parser.add_argument('--seq_len', type=int, default=24, help='input sequence length')
-    parser.add_argument('--label_len', type=int, default=12, help='start token length')
-    parser.add_argument('--pred_len', type=int, default=36, help='prediction sequence length')
+    parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
+    parser.add_argument('--label_len', type=int, default=48, help='start token length')
+    parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
     parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
 
     # model define
@@ -79,10 +81,10 @@ if __name__=="__main__":
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
     parser.add_argument('--stride', type=int, default=8, help='stride')
-    parser.add_argument('--prompt_domain', type=int, default=0, help='')
+    parser.add_argument('--prompt_domain', type=int, default=0, help='stride')
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=1, help='data loader num workers')
@@ -91,8 +93,8 @@ if __name__=="__main__":
     parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
     parser.add_argument('--eval_batch_size', type=int, default=8, help='batch size of model evaluation')
-    parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
-    parser.add_argument('--learning_rate', type=float, default=0.001, help='optimizer learning rate')
+    parser.add_argument('--patience', type=int, default=20, help='early stopping patience')
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
@@ -102,40 +104,10 @@ if __name__=="__main__":
     parser.add_argument('--percent', type=int, default=100)
 
     args = parser.parse_args()
-
-    # 初始化随机数
-    fix_seed = args.seed
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
-    # 初始化多卡设置
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
     # accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
     accelerator = Accelerator(mixed_precision='bf16')
-
-    # 初始化logger设置
-    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
-        args.task_name,
-        args.model_id,
-        args.model,
-        args.data,
-        args.features,
-        args.seq_len,
-        args.label_len,
-        args.pred_len,
-        args.d_model,
-        args.n_heads,
-        args.e_layers,
-        args.d_layers,
-        args.d_ff,
-        args.factor,
-        args.embed,
-        args.des, 
-        args.itr)
-    set_logger(args.logger + '/' + setting + '/' + filetime + '.log')
-
 
     for ii in range(args.itr):
         # setting record of experiments
@@ -157,6 +129,12 @@ if __name__=="__main__":
             args.embed,
             args.des, ii)
 
+        if args.data == 'm4':
+            args.pred_len = M4Meta.horizons_map[args.seasonal_patterns]  # Up to M4 config
+            args.seq_len = 2 * args.pred_len
+            args.label_len = args.pred_len
+            args.frequency_map = M4Meta.frequency_map[args.seasonal_patterns]
+
         train_data, train_loader = data_provider(args, 'train')
         vali_data, vali_loader = data_provider(args, 'val')
         test_data, test_loader = data_provider(args, 'test')
@@ -177,14 +155,9 @@ if __name__=="__main__":
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience)
+        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience, verbose=True)
 
-        trained_parameters = []
-        for p in model.parameters():
-            if p.requires_grad is True:
-                trained_parameters.append(p)
-
-        model_optim = optim.Adam(trained_parameters, lr=args.learning_rate)
+        model_optim = optim.Adam(model.parameters(), lr=args.learning_rate)
 
         if args.lradj == 'COS':
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=20, eta_min=1e-8)
@@ -195,15 +168,10 @@ if __name__=="__main__":
                                                 epochs=args.train_epochs,
                                                 max_lr=args.learning_rate)
 
-        # criterion = nn.MSELoss()
         criterion = smape_loss()
-        mae_metric = nn.L1Loss()
 
-        train_loader, vali_loader, test_loader, model, model_optim, scheduler = accelerator.prepare(
-            train_loader, vali_loader, test_loader, model, model_optim, scheduler)
-
-        if args.use_amp:
-            scaler = torch.cuda.amp.GradScaler()
+        train_loader, vali_loader, model, model_optim, scheduler = accelerator.prepare(
+            train_loader, vali_loader, model, model_optim, scheduler)
 
         for epoch in range(args.train_epochs):
             iter_count = 0
@@ -211,68 +179,43 @@ if __name__=="__main__":
 
             model.train()
             epoch_time = time.time()
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(train_loader)):
+
+            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
-
                 batch_x = batch_x.float().to(accelerator.device)
+
                 batch_y = batch_y.float().to(accelerator.device)
-                batch_x_mark = batch_x_mark.float().to(accelerator.device)
                 batch_y_mark = batch_y_mark.float().to(accelerator.device)
 
                 # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(
-                    accelerator.device)
+                dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float().to(accelerator.device)
                 dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(
                     accelerator.device)
 
-                # encoder - decoder
-                if args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if args.output_attention:
-                            outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                outputs = model(batch_x, None, dec_inp, None)
 
-                        f_dim = -1 if args.features == 'MS' else 0
-                        outputs = outputs[:, -args.pred_len:, f_dim:]
-                        batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
+                f_dim = -1 if args.features == 'MS' else 0
+                outputs = outputs[:, -args.pred_len:, f_dim:]
+                batch_y = batch_y[:, -args.pred_len:, f_dim:]
 
-                        raise NotImplementedError
+                batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
+                loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
 
-                        loss = criterion(outputs, batch_y)
-                        train_loss.append(loss.item())
-                else:
-                    if args.output_attention:
-                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                    else:
-                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                    f_dim = -1 if args.features == 'MS' else 0
-                    outputs = outputs[:, -args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -args.pred_len:, f_dim:]
-
-                    batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
-                    loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
-                    
-                    train_loss.append(loss.item())
+                train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
                     accelerator.print(
-                        "\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                        "\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item())
+                    )
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((args.train_epochs - epoch) * train_steps - i)
                     accelerator.print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
 
-                if args.use_amp:
-                    scaler.scale(loss).backward()
-                    scaler.step(model_optim)
-                    scaler.update()
-                else:
-                    accelerator.backward(loss)
-                    model_optim.step()
+                accelerator.backward(loss)
+                model_optim.step()
 
                 if args.lradj == 'TST':
                     adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=False)
@@ -280,32 +223,92 @@ if __name__=="__main__":
 
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
-            test_loss, test_mae_loss = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
+            vali_loss = test(args, accelerator, model, train_loader, vali_loader, criterion)
+            test_loss = vali_loss
             accelerator.print(
-                "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
-                    epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss))
-
-            early_stopping(vali_loss, model, path)
+                "Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
+                    epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+            early_stopping(vali_loss, model, path)  # model saving
             if early_stopping.early_stop:
                 accelerator.print("Early stopping")
                 break
 
             if args.lradj != 'TST':
-                if args.lradj == 'COS':
-                    scheduler.step()
-                    accelerator.print("lr = {:.10f}".format(model_optim.param_groups[0]['lr']))
-                else:
-                    if epoch == 0:
-                        args.learning_rate = model_optim.param_groups[0]['lr']
-                        accelerator.print("lr = {:.10f}".format(model_optim.param_groups[0]['lr']))
-                    adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=True)
-
+                adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=True)
             else:
                 accelerator.print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
+        best_model_path = path + '/' + 'checkpoint'
+        accelerator.wait_for_everyone()
+        unwrapped_model = accelerator.unwrap_model(model)
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        unwrapped_model.load_state_dict(torch.load(best_model_path, map_location=lambda storage, loc: storage))
+
+        x, _ = train_loader.dataset.last_insample_window()
+        y = test_loader.dataset.timeseries
+        x = torch.tensor(x, dtype=torch.float32).to(accelerator.device)
+        x = x.unsqueeze(-1)
+
+        model.eval()
+
+        with torch.no_grad():
+            B, _, C = x.shape
+            dec_inp = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
+            dec_inp = torch.cat([x[:, -args.label_len:, :], dec_inp], dim=1)
+            outputs = torch.zeros((B, args.pred_len, C)).float().to(accelerator.device)
+            id_list = np.arange(0, B, args.eval_batch_size)
+            id_list = np.append(id_list, B)
+            for i in range(len(id_list) - 1):
+                outputs[id_list[i]:id_list[i + 1], :, :] = model(
+                    x[id_list[i]:id_list[i + 1]],
+                    None,
+                    dec_inp[id_list[i]:id_list[i + 1]],
+                    None
+                )
+            accelerator.wait_for_everyone()
+            f_dim = -1 if args.features == 'MS' else 0
+            outputs = outputs[:, -args.pred_len:, f_dim:]
+            outputs = outputs.detach().cpu().numpy()
+
+            preds = outputs
+            trues = y
+            x = x.detach().cpu().numpy()
+
+        accelerator.print('test shape:', preds.shape)
+
+        folder_path = './m4_results/' + args.model + '-' + args.model_comment + '/'
+        if not os.path.exists(folder_path) and accelerator.is_local_main_process:
+            os.makedirs(folder_path)
+
+        if accelerator.is_local_main_process:
+            forecasts_df = pandas.DataFrame(preds[:, :, 0], columns=[f'V{i + 1}' for i in range(args.pred_len)])
+            forecasts_df.index = test_loader.dataset.ids[:preds.shape[0]]
+            forecasts_df.index.name = 'id'
+            forecasts_df.set_index(forecasts_df.columns[0], inplace=True)
+            forecasts_df.to_csv(folder_path + args.seasonal_patterns + '_forecast.csv')
+
+            # calculate metrics
+            accelerator.print(args.model)
+            file_path = folder_path
+            if 'Weekly_forecast.csv' in os.listdir(file_path) \
+                    and 'Monthly_forecast.csv' in os.listdir(file_path) \
+                    and 'Yearly_forecast.csv' in os.listdir(file_path) \
+                    and 'Daily_forecast.csv' in os.listdir(file_path) \
+                    and 'Hourly_forecast.csv' in os.listdir(file_path) \
+                    and 'Quarterly_forecast.csv' in os.listdir(file_path):
+                m4_summary = M4Summary(file_path, args.root_path)
+                # m4_forecast.set_index(m4_winner_forecast.columns[0], inplace=True)
+                smape_results, owa_results, mape, mase = m4_summary.evaluate()
+                accelerator.print('smape:', smape_results)
+                accelerator.print('mape:', mape)
+                accelerator.print('mase:', mase)
+                accelerator.print('owa:', owa_results)
+            else:
+                accelerator.print('After all 6 tasks are finished, you can calculate the averaged performance')
+
     accelerator.wait_for_everyone()
-    # if accelerator.is_local_main_process:
-    #     path = './checkpoints'  # unique checkpoint saving path
-    #     del_files(path)  # delete checkpoint files
-    #     accelerator.print('success delete checkpoints')
+    if accelerator.is_local_main_process:
+        path = './checkpoints'  # unique checkpoint saving path
+        del_files(path)  # delete checkpoint files
+        accelerator.print('success delete checkpoints')
