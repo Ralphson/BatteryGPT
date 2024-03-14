@@ -165,17 +165,7 @@ class Model(nn.Module):
         dec_out = dec_out.permute(0, 2, 1).contiguous()
         
         dec_out = self.normalize_layers(dec_out, 'denorm')
-<<<<<<< Updated upstream
-        
-=======
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         dec_out = dec_out.bfloat16()
         dec_out = self.out_Linear(dec_out)
         return dec_out
