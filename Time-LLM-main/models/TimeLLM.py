@@ -113,7 +113,7 @@ class Model(nn.Module):
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
 
         x_enc = self.normalize_layers(x_enc, 'norm')
-
+        
         B, T, N = x_enc.size()
         x_enc = x_enc.permute(0, 2, 1).contiguous().reshape(B * N, T, 1)
 
@@ -122,7 +122,7 @@ class Model(nn.Module):
         medians = torch.median(x_enc, dim=1).values
         lags = self.calcute_lags(x_enc)
         trends = x_enc.diff(dim=1).sum(dim=1)
-
+        
         prompt = []
         for b in range(x_enc.shape[0]):
             min_values_str = str(min_values[b].tolist()[0])
@@ -143,7 +143,7 @@ class Model(nn.Module):
             prompt.append(prompt_)
 
         x_enc = x_enc.reshape(B, N, T).permute(0, 2, 1).contiguous()
-
+        
         prompt = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048).input_ids
         prompt_embeddings = self.llama.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
@@ -155,16 +155,17 @@ class Model(nn.Module):
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
         dec_out = self.llama(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
-
+        
         dec_out = torch.reshape(
             dec_out, (-1, n_vars, dec_out.shape[-2], dec_out.shape[-1]))
         dec_out = dec_out.permute(0, 1, 3, 2).contiguous()
-
+        
         dec_out = self.output_projection(dec_out[:, :, :, -self.patch_nums:])
         dec_out = dec_out.permute(0, 2, 1).contiguous()
-
+        
         dec_out = self.normalize_layers(dec_out, 'denorm')
-
+        
+        dec_out = dec_out.bfloat16()
         dec_out = self.out_Linear(dec_out)
         return dec_out
 

@@ -33,7 +33,7 @@ if __name__=="__main__":
     parser.add_argument('--task_name', type=str, required=False, default='long_term_forecast',
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
-    parser.add_argument('--model_id', type=str, required=False, default='test', help='model id')
+    parser.add_argument('--model_id', type=str, required=False, default='Battery', help='model id')
     parser.add_argument('--model_comment', type=str, required=False, default='none', help='prefix when saving test results')
     parser.add_argument('--model', type=str, required=False, default='TimeLLM',
                         help='model name, options: [Autoformer, DLinear]')
@@ -57,6 +57,7 @@ if __name__=="__main__":
                              'you can also use more detailed freq like 15min or 3h')
     parser.add_argument('--checkpoints', type=str, default='./cache/', help='location of model checkpoints')
     parser.add_argument('--logger', type=str, default='./logs', help='log folder')
+    parser.add_argument('--on_server', type=bool, default=False)
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=24, help='input sequence length')
@@ -112,8 +113,10 @@ if __name__=="__main__":
     # 初始化多卡设置
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     deepspeed_plugin = DeepSpeedPlugin(hf_ds_config='./ds_config_zero2.json')
-    # accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
-    accelerator = Accelerator(mixed_precision='bf16')
+    if args.on_server:
+        accelerator = Accelerator(kwargs_handlers=[ddp_kwargs], deepspeed_plugin=deepspeed_plugin)
+    else:
+        accelerator = Accelerator(mixed_precision='bf16')
 
     # 初始化logger设置
     setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
@@ -135,7 +138,8 @@ if __name__=="__main__":
         args.des, 
         args.itr)
     set_logger(args.logger + '/' + setting + '/' + filetime + '.log')
-
+    print('Args in experiment:')
+    print(args)
 
     for ii in range(args.itr):
         # setting record of experiments
