@@ -166,11 +166,11 @@ if __name__=="__main__":
         test_data, test_loader = data_provider(args, 'test')
 
         if args.model == 'Autoformer':
-            model = Autoformer.Model(args).float()
+            model = Autoformer.Model(args).bfloat16()
         elif args.model == 'DLinear':
-            model = DLinear.Model(args).float()
+            model = DLinear.Model(args).bfloat16()
         else:
-            model = TimeLLM.Model(args).float()
+            model = TimeLLM.Model(args).bfloat16()
 
         path = os.path.join(args.checkpoints,
                             setting + '-' + args.model_comment)  # unique checkpoint saving path

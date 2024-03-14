@@ -152,6 +152,7 @@ class Model(nn.Module):
         x_enc = x_enc.permute(0, 2, 1).contiguous()
         enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
         enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
         dec_out = self.llama(inputs_embeds=llama_enc_out).last_hidden_state
         dec_out = dec_out[:, :, :self.d_ff]
@@ -164,7 +165,14 @@ class Model(nn.Module):
         dec_out = dec_out.permute(0, 2, 1).contiguous()
         
         dec_out = self.normalize_layers(dec_out, 'denorm')
+<<<<<<< Updated upstream
         
+=======
+
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
         dec_out = dec_out.bfloat16()
         dec_out = self.out_Linear(dec_out)
         return dec_out
