@@ -270,7 +270,7 @@ if __name__=="__main__":
                     batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
 
                     # loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
-                    loss = criterion(outputs, batch_y)
+                    loss = criterion(outputs, batch_y.to(torch.bfloat16))
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
