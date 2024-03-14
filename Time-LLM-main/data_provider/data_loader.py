@@ -400,7 +400,7 @@ class Dataset_Masked_Battery(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
                  target='OT', scale=True, timeenc=0, freq='h', percent=100,
-                 seasonal_patterns=None, cutting_rate=1.2, drop_bid=False):
+                 seasonal_patterns=None, cutting_rate=1.2, drop_bid=False, seq_limit=0):
         """
         ~~ 不能在轮次维度划分,电池维度有寿命衰减存在 ~~
 
@@ -410,9 +410,9 @@ class Dataset_Masked_Battery(Dataset):
             最长的充电序列,`seq_len-pred_len-label_len`的部分用掩码遮住
         """
         if size == None:
-            self.seq_len = 24    # 训练长度
-            self.label_len = 12  # 重叠部分,用于预测序列回看知识
-            self.pred_len = 36   # 预测
+            self.seq_len = 18    # 训练长度
+            self.label_len = 9  # 重叠部分,用于预测序列回看知识
+            self.pred_len = 30   # 预测
         else:
             self.seq_len = size[0]
             self.label_len = size[1]
@@ -430,6 +430,7 @@ class Dataset_Masked_Battery(Dataset):
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
+        self.seq_limit = seq_limit
 
         # self.percent = percent
         self.root_path = root_path
@@ -443,10 +444,12 @@ class Dataset_Masked_Battery(Dataset):
 
         # 按照电池+轮次打乱
         indexed_df = df_raw.set_index(['battery_id', 'Cycle_Index'])
+        indexed_df['luncishu'] = df_raw.groupby(['battery_id', 'Cycle_Index']).count()['cycle_test_time']
+        indexed_df = indexed_df[indexed_df['luncishu'] > self.seq_limit]   # 只保留48以上的轮次
+        indexed_df = indexed_df.drop('luncishu', axis=1)        # 删除luncishu
         shuffled_index = indexed_df.index.unique().values
         random.shuffle(shuffled_index)
         shuffled_index = pd.Index(shuffled_index)
-
 
         # 找到对应数据集的位置
         border1s = [0, 0.6, 0.7]
@@ -503,6 +506,130 @@ class Dataset_Masked_Battery(Dataset):
         outsample_mask = np.zeros((self.label_len + self.pred_len, 1))
 
         seq = self.data[index]
+        try:
+            low = self.seq_len
+            high = len(seq) - self.pred_len
+            cut_point = np.random.randint(low=low,
+                                          high=high,
+                                          size=1)[0]    # 切分点,
+        except:
+            raise ValueError("index={}, low={}, high={}".format(index, low, high), len(seq))
+
+        insample = seq[cut_point - self.seq_len: cut_point]
+        outsample = seq[cut_point-self.label_len: cut_point + self.pred_len]
+
+        return insample, outsample, insample_mask, outsample_mask
+
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
+
+
+class Dataset_Battery(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
+                 target='OT', scale=True, timeenc=0, freq='h', percent=100,
+                 seasonal_patterns=None, cutting_rate=1.2, drop_bid=False):
+        if size == None:
+            self.seq_len = 96    # 训练长度
+            self.label_len = 48  # 重叠部分,用于预测序列回看知识
+            self.pred_len = 96   # 预测
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.drop_bid = drop_bid    # TODO:battery_id可能需要独热编码,考虑drop或者不进行归一化
+        self.cutting_rate = cutting_rate
+        self.percent = percent
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+
+        # self.percent = percent
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        df_raw = pd.read_csv(os.path.join(self.root_path,
+                                          self.data_path))
+
+        # 按照电池+轮次打乱
+        indexed_df = df_raw.set_index(['battery_id', 'Cycle_Index'])
+        shuffled_index = indexed_df.index.unique().values
+        random.shuffle(shuffled_index)
+        shuffled_index = pd.Index(shuffled_index)
+
+        # 找到对应数据集的位置
+        border1s = [0, 0.6, 0.7]
+        border2s = [0.6, 0.7, 1]
+        def get_data(df, shuffled_index, a, b):
+            border1 = int(a*shuffled_index.shape[0])
+            border2 = int(b*shuffled_index.shape[0])
+            flag = shuffled_index[border1:border2]
+            df = df.loc[flag]
+            return df
+
+        # 获取对应模式的数据
+        df = get_data(indexed_df, shuffled_index, border1s[self.set_type], border2s[self.set_type])
+
+        # 记录恢复标识
+        recover_index = df.index
+        self.recover_index_list = []    # 数字index
+        self.recover_name_list = []     # 原始multiindex标志
+        a = pd.DataFrame(range(recover_index.shape[0]), index=recover_index)
+        groups = a.groupby(level=[0,1], sort=False)
+        for name, group in groups:
+            self.recover_index_list.append(group[0].to_numpy())
+            self.recover_name_list.append(name)
+        self.recover_index_list = np.array(self.recover_index_list, dtype=object)
+        self.recover_name_list = np.array(self.recover_name_list, dtype=object)
+
+        # unstack index
+        df = df.reset_index()   
+
+        # 删除bid
+        if self.drop_bid:
+            df = df.drop('battery_id', axis=1)
+
+        # 归一化
+        scaler = StandardScaler()
+        if self.scale:
+            train_data = get_data(indexed_df, shuffled_index, border1s[0], border2s[0])
+            train_data = train_data.reset_index()
+            if self.drop_bid:
+                train_data = train_data.drop('battery_id', axis=1)
+            scaler.fit(train_data.values)
+            self.data = scaler.transform(df.values)  
+        else:
+            self.data = df.values
+
+        # 等长数据
+        self.data = np.array([self.data[index] for index in self.recover_index_list], dtype=object)
+
+        # TODO
+
+        print('data-{} load completed: {}'.format(self.set_type, self.data.shape))
+
+    def __getitem__(self, index):
+        insample = np.zeros((self.seq_len, 11))
+        insample_mask = np.zeros((self.seq_len, 11))
+        outsample = np.zeros((self.label_len + self.pred_len, 1))
+        outsample_mask = np.zeros((self.label_len + self.pred_len, 1))
+
+        seq = self.data[index]
         cut_point = np.random.randint(low=max(1, len(seq) - int(self.pred_len * self.cutting_rate)),
                                       high=len(seq),
                                       size=1)[0]    # 切分点,
@@ -525,6 +652,7 @@ class Dataset_Masked_Battery(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+
 
 
 if __name__=="__main__":

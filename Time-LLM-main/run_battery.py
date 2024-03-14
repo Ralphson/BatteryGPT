@@ -10,7 +10,7 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
-from models import Autoformer, DLinear, TimeLLM
+from models import Autoformer, DLinear, TimeLLM, BatteryGPT
 from log import set_logger
 
 
@@ -35,7 +35,7 @@ if __name__=="__main__":
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=False, default='Battery', help='model id')
     parser.add_argument('--model_comment', type=str, required=False, default='none', help='prefix when saving test results')
-    parser.add_argument('--model', type=str, required=False, default='TimeLLM',
+    parser.add_argument('--model', type=str, required=False, default='BatteryGPT',
                         help='model name, options: [Autoformer, DLinear]')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
 
@@ -81,8 +81,8 @@ if __name__=="__main__":
                         help='time features encoding, options:[timeF, fixed, learned]')
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in encoder')
-    parser.add_argument('--patch_len', type=int, default=16, help='patch length')
-    parser.add_argument('--stride', type=int, default=8, help='stride')
+    parser.add_argument('--patch_len', type=int, default=8, help='patch length')
+    parser.add_argument('--stride', type=int, default=4, help='stride')
     parser.add_argument('--prompt_domain', type=int, default=0, help='')
 
     # optimization
@@ -169,6 +169,8 @@ if __name__=="__main__":
             model = Autoformer.Model(args).bfloat16()
         elif args.model == 'DLinear':
             model = DLinear.Model(args).bfloat16()
+        elif args.model == 'BatteryGPT':
+            model = BatteryGPT.Model(args).bfloat16()
         else:
             model = TimeLLM.Model(args).bfloat16()
 
@@ -224,6 +226,7 @@ if __name__=="__main__":
             model.train()
             epoch_time = time.time()
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(train_loader)):
+                print(i)
                 iter_count += 1
                 model_optim.zero_grad()
 

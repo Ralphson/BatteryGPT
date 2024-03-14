@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from transformers import LlamaConfig, LlamaModel, LlamaTokenizer
 from transformers import GPT2Config, GPT2Model, GPT2Tokenizer
-from layers.Embed import PatchEmbedding
+from layers.Embed import PatchEmbedding, SeqEmbedding
 
 import transformers
 
@@ -79,6 +79,8 @@ class Model(nn.Module):
 
         self.patch_embedding = PatchEmbedding(
             configs.d_model, self.patch_len, self.stride, configs.dropout)
+        self.seq_embedding = SeqEmbedding(configs.enc_in, configs.d_model, configs.dropout)
+        
 
         self.word_embeddings = self.llama.get_input_embeddings().weight
         self.vocab_size = self.word_embeddings.shape[0]
@@ -146,11 +148,15 @@ class Model(nn.Module):
         prompt_embeddings = self.llama.get_input_embeddings()(prompt.to(x_enc.device))  # (batch, prompt_token, dim)
 
         # 数据预训练
+        n_vars = x_enc.shape[-1]
         source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
-        x_enc = x_enc.permute(0, 2, 1).contiguous()
-        enc_out, n_vars = self.patch_embedding(x_enc.to(torch.bfloat16))
+        x_enc = x_enc.permute(0, 2, 1).contiguous()                         # [batch_size, nvars, seq_len]
+        # x_mark_enc = x_mark_enc.permute(0, 2, 1).contiguous()               # [batch_size, nvars, seq_len]
+        enc_out, n_vars, x_mask = self.patch_embedding(x_enc.to(torch.bfloat16))
+        # enc_out, x_mask = self.seq_embedding(x_enc.to(torch.bfloat16), x_mark_enc)
         enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
         
+
         # 数据和prompt一起进入骨干网络训练
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
         dec_out = self.llama(inputs_embeds=llama_enc_out).last_hidden_state
@@ -193,29 +199,43 @@ class ReprogrammingLayer(nn.Module):
         self.n_heads = n_heads
         self.dropout = nn.Dropout(attention_dropout)
 
-    def forward(self, target_embedding, source_embedding, value_embedding):
-        B, L, _ = target_embedding.shape
-        S, _ = source_embedding.shape
-        H = self.n_heads
+    def forward(self, target_embedding, source_embedding, value_embedding, x_mask=None):    # x_mask: [batch_size, seq_len, nvars]
+        B, L, _ = target_embedding.shape                                                    # [batch_size, seq_len, d_model]
+        S, _ = source_embedding.shape                                                       # [n_tokens, 768]
+        H = self.n_heads                                                                    # [n_heads]
 
-        target_embedding = self.query_projection(target_embedding).view(B, L, H, -1)
-        source_embedding = self.key_projection(source_embedding).view(S, H, -1)
-        value_embedding = self.value_projection(value_embedding).view(S, H, -1)
+        # # 掩去<pad>
+        # if x_mask is not None:
+        #     x_mask = ~x_mask.to(torch.bool)
+        #     target_embedding = target_embedding.masked_fill_(x_mask, float('-inf'))
 
-        out = self.reprogramming(target_embedding, source_embedding, value_embedding)
+        target_embedding = self.query_projection(target_embedding).view(B, L, H, -1)        # [B, seq_len, n_heads, d_ff]
+        source_embedding = self.key_projection(source_embedding).view(S, H, -1)             # [n_tokens, n_heads, d_ff]
+        value_embedding = self.value_projection(value_embedding).view(S, H, -1)             # [n_tokens, n_heads, d_ff]
+
+        out = self.reprogramming(target_embedding, source_embedding, value_embedding, x_mask)
 
         out = out.reshape(B, L, -1)
 
         return self.out_projection(out)
 
-    def reprogramming(self, target_embedding, source_embedding, value_embedding):
-        B, L, H, E = target_embedding.shape
+    def reprogramming(self, target_embedding, source_embedding, value_embedding, x_mask=None):  # x_mask: [batch_size, seq_len, nvars]
+        B, L, H, E = target_embedding.shape         # [B, seq_len, n_heads, d_ff]
 
         scale = 1. / sqrt(E)
 
-        scores = torch.einsum("blhe,she->bhls", target_embedding, source_embedding)
+        scores = torch.einsum("blhe,she->bhls", target_embedding, source_embedding)         # [B, n_heads, seq_len, n_tokens]
+        scores = scale * scores
 
-        A = self.dropout(torch.softmax(scale * scores, dim=-1))
+        # 掩码
+        if x_mask is not None:
+            x_mask = x_mask.unsqueeze(1)[:,:,:,0].unsqueeze(-1)
+            x_mask = ~x_mask.to(torch.bool)
+            scores = scores.masked_fill(x_mask, float('-inf'))
+
+        scores = torch.softmax(scores, dim=-1)
+
+        A = self.dropout(scores)
         reprogramming_embedding = torch.einsum("bhls,she->blhe", A, value_embedding)
 
         return reprogramming_embedding

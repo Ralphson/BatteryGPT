@@ -41,7 +41,7 @@ def data_provider(args, flag):
             freq=freq,
             seasonal_patterns=args.seasonal_patterns
         )
-    elif args.data == 'my':
+    elif args.data == 'masked_battery':
         data_set = Data(
             root_path=args.root_path,
             data_path=args.data_path,
@@ -54,7 +54,8 @@ def data_provider(args, flag):
             percent=percent,
             seasonal_patterns=args.seasonal_patterns,
             cutting_rate=args.cutting_rate,
-            drop_bid=args.drop_bid
+            drop_bid=args.drop_bid,
+            seq_limit=args.seq_limit
         )
     else:
         data_set = Data(

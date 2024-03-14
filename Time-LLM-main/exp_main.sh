@@ -1,4 +1,4 @@
-model_name=TimeLLM
+model_name=BatteryGPT
 learning_rate=0.01
 on_server=true
 

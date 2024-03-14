@@ -28,11 +28,11 @@ class PositionalEmbedding(nn.Module):
 
 
 class TokenEmbedding(nn.Module):
-    def __init__(self, c_in, d_model):
+    def __init__(self, c_in, d_model, kernel_size=3):
         super(TokenEmbedding, self).__init__()
         padding = 1 if torch.__version__ >= '1.5.0' else 2
         self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model,
-                                   kernel_size=3, padding=padding, padding_mode='circular', bias=False)
+                                   kernel_size=kernel_size, padding=padding, padding_mode='circular', bias=False)
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
                 nn.init.kaiming_normal_(
@@ -166,7 +166,7 @@ class PatchEmbedding(nn.Module):
         self.padding_patch_layer = ReplicationPad1d((0, stride))
 
         # Backbone, Input encoding: projection of feature vectors onto a d-dim vector space
-        self.value_embedding = TokenEmbedding(patch_len, d_model)
+        self.value_embedding = TokenEmbedding(patch_len, d_model, kernel_size=1)
 
         # Positional embedding
         # self.position_embedding = PositionalEmbedding(d_model)
@@ -174,15 +174,53 @@ class PatchEmbedding(nn.Module):
         # Residual dropout
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        # do patching
+    def forward(self, x, x_mask=None):
         n_vars = x.shape[1]
+
+        # do patching
         x = self.padding_patch_layer(x)
         x = x.unfold(dimension=-1, size=self.patch_len, step=self.stride)
-        x = torch.reshape(x, (x.shape[0] * x.shape[1], x.shape[2], x.shape[3]))
-        # Input encoding
-        x = self.value_embedding(x)
-        return self.dropout(x), n_vars
+        x = torch.reshape(x, (x.shape[0] * x.shape[1], x.shape[2], x.shape[3]))             # x: [bs * nvars, patch_num, patch_len]
+
+        if x_mask is None:
+            x = self.value_embedding(x)
+            return self.dropout(x), n_vars, None
+        else:
+            # 有掩码时，计算卷积会损害原始信息
+            x_mask = self.padding_patch_layer(x_mask)                                       # x_mask: [bs, nvars, T + stride]
+            x_mask = x_mask.unfold(dimension=-1, size=self.patch_len, step=self.stride)     # x_mask: [bs, nvars, patch_num, patch_len]
+            x_mask = torch.reshape(x_mask, (x_mask.shape[0] * x_mask.shape[1], \
+                                        x_mask.shape[2], x_mask.shape[3]))                  # x_mask: [bs * nvars, patch_num, patch_len]
+
+            # x = self.value_embedding(x)                                                     # x: [bs * nvars, patch_num, d_model]
+            # x_mask = self.value_embedding(x_mask)                                           # x_mask: [bs * nvars, patch_num, d_model]
+            return self.dropout(x), n_vars, x_mask
+
+
+class SeqEmbedding(nn.Module):
+    def __init__(self, c_in, d_model, dropout):
+        super(SeqEmbedding, self).__init__()
+
+        self.Wp = nn.Linear(c_in, d_model)
+
+        # Backbone, Input encoding: projection of feature vectors onto a d-dim vector space
+        self.value_embedding = TokenEmbedding(c_in, d_model, kernel_size=1)
+
+        # Positional embedding
+        self.position_embedding = PositionalEmbedding(d_model)
+
+        # Residual dropout
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, x_mask):  # [batch_size, nvars, seq_len]
+        x = x.permute(0,2,1)                # x: [batch_size, seq_len, nvars]
+        x_mask = x_mask.permute(0,2,1)      # x_mask: [batch_size, seq_len, nvars]
+
+        x = self.Wp(x)                      # x: [batch_size, seq_len, d_model]
+        # x = self.position_embedding(x)
+
+        return x, x_mask                          # x: [batch_size, seq_len, d_model]
+
 
 
 class DataEmbedding_wo_time(nn.Module):
