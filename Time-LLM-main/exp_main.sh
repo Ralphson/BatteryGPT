@@ -11,6 +11,7 @@ comment='BatteryGPT-Masked_battery'
 
 # --multi_gpu 
 # 正式训练
+num_workers=10
 master_port=00097
 num_process=1
 batch_size=8
@@ -34,7 +35,8 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --learning_rate $learning_rate \
   --llm_layers $llama_layers \
   --train_epochs $train_epochs \
-  --model_comment $comment
+  --model_comment $comment \
+  --num_workers $num_workers
 
 
 

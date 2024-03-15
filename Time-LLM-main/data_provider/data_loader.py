@@ -497,7 +497,7 @@ class Dataset_Masked_Battery(Dataset):
 
         # 不等长的数据
         self.data = np.array([self.data[index] for index in self.recover_index_list], dtype=object)
-        print('data-{} load completed: {}'.format(self.set_type, self.data.shape))
+        print('data-{} load completed: {} lunci'.format(self.set_type, self.data.shape))
 
     def __getitem__(self, index):
         insample = np.zeros((self.seq_len, 11))
@@ -516,7 +516,8 @@ class Dataset_Masked_Battery(Dataset):
             raise ValueError("index={}, low={}, high={}".format(index, low, high), len(seq))
 
         insample = seq[cut_point - self.seq_len: cut_point]
-        outsample = seq[cut_point-self.label_len: cut_point + self.pred_len]
+        outsample = seq[cut_point - self.label_len: cut_point + self.pred_len, -1]
+        outsample = outsample[:, np.newaxis]
 
         return insample, outsample, insample_mask, outsample_mask
 

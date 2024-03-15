@@ -87,7 +87,7 @@ if __name__=="__main__":
     parser.add_argument('--prompt_domain', type=int, default=0, help='')
 
     # optimization
-    parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
+    parser.add_argument('--num_workers', type=int, default=1, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
@@ -230,8 +230,9 @@ if __name__=="__main__":
                 iter_count += 1
                 model_optim.zero_grad()
 
-                batch_x = batch_x.float().to(accelerator.device)
-                batch_y = batch_y.float().to(accelerator.device)
+                # 这里nvars包含最后一维的电能
+                batch_x = batch_x.float().to(accelerator.device)                # [bs, seq_len, nvars]
+                batch_y = batch_y.float().to(accelerator.device)                # [bs, label_len+pred_len, 1]
                 batch_x_mark = batch_x_mark.float().to(accelerator.device)
                 batch_y_mark = batch_y_mark.float().to(accelerator.device)
 
@@ -264,13 +265,16 @@ if __name__=="__main__":
                         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                     f_dim = -1 if args.features == 'MS' else 0
-                    outputs = outputs[:, -args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -args.pred_len:, f_dim:]
+                    outputs = outputs[:, -args.pred_len:, f_dim:]   # 截掉label部分
+                    batch_y = batch_y[:, -args.pred_len:, f_dim:]   # 截掉label部分
 
                     batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
 
                     # loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
-                    loss = criterion(outputs, batch_y.to(torch.bfloat16))
+                    if args.on_server:
+                        loss = criterion(outputs, batch_y.to(torch.bfloat16))
+                    else:
+                        loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
