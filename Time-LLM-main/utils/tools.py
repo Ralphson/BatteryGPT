@@ -137,6 +137,8 @@ def del_files(dir_path):
 def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric):
     total_loss = []
     total_mae_loss = []
+    axis1 = None
+    axis2 = None
     model.eval()
     with torch.no_grad():
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
@@ -170,15 +172,23 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric
             pred = outputs.detach()
             true = batch_y.detach()
 
-            loss = criterion(pred, true)
+            if args.model == 'BatteryGPTv0':
+                loss = criterion(pred, true)
+                mae_loss = mae_metric(pred, true)
+                total_loss.append(loss.item())
+                total_mae_loss.append(mae_loss.item())
+                axis1, axis2 = None, None
+            elif args.model == 'BatteryGPTv1':
+                loss = criterion(batch_x, args.frequency_map, pred, true, batch_y_mark)
+                mae_loss = mae_metric(pred, true)
+                total_loss.append(loss.item())
+                total_mae_loss.append(mae_loss)
+                axis1, axis2 = None, 0
+            else:
+                raise NotImplementedError
 
-            mae_loss = mae_metric(pred, true)
-
-            total_loss.append(loss.item())
-            total_mae_loss.append(mae_loss.item())
-
-    total_loss = np.average(total_loss)
-    total_mae_loss = np.average(total_mae_loss)
+    total_loss = np.average(total_loss, axis1)
+    total_mae_loss = np.average(total_mae_loss, axis2)
 
     model.train()
     return total_loss, total_mae_loss

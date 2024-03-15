@@ -10,13 +10,14 @@ from torch import nn, optim
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 
-from models import Autoformer, DLinear, TimeLLM, BatteryGPT
+from models import Autoformer, DLinear, TimeLLM, BatteryGPT, BatteryGPT_mask
 from log import set_logger
 
 
 from data_provider.data_factory import data_provider
 from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
 from utils.losses import smape_loss, mase_loss, mape_loss
+from utils.metrics import metric
 
 
 
@@ -34,13 +35,14 @@ if __name__=="__main__":
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=False, default='Battery', help='model id')
-    parser.add_argument('--model_comment', type=str, required=False, default='none', help='prefix when saving test results')
-    parser.add_argument('--model', type=str, required=False, default='BatteryGPT',
+    parser.add_argument('--model_comment', type=str, required=False, default='on_local', help='prefix when saving test results')
+    parser.add_argument('--model', type=str, required=False, default='BatteryGPTv0',
                         help='model name, options: [Autoformer, DLinear]')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
+    parser.add_argument('--filetime', type=str, default=filetime, help='file start time')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='masked_battery', help='dataset type')
+    parser.add_argument('--data', type=str, required=False, default='batdata', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./dataset/my', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv', help='data file')
     parser.add_argument('--drop_bid', type=int, default=0)
@@ -60,9 +62,10 @@ if __name__=="__main__":
     parser.add_argument('--on_server', type=bool, default=False)
 
     # forecasting task
-    parser.add_argument('--seq_len', type=int, default=24, help='input sequence length')
-    parser.add_argument('--label_len', type=int, default=12, help='start token length')
-    parser.add_argument('--pred_len', type=int, default=36, help='prediction sequence length')
+    parser.add_argument('--seq_limit', type=int, default=48, help='raw sequence length')
+    parser.add_argument('--seq_len', type=int, default=18, help='input sequence length')
+    parser.add_argument('--label_len', type=int, default=9, help='start token length')
+    parser.add_argument('--pred_len', type=int, default=30, help='prediction sequence length')
     parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
 
     # model define
@@ -169,8 +172,10 @@ if __name__=="__main__":
             model = Autoformer.Model(args).bfloat16()
         elif args.model == 'DLinear':
             model = DLinear.Model(args).bfloat16()
-        elif args.model == 'BatteryGPT':
+        elif args.model == 'BatteryGPTv0':
             model = BatteryGPT.Model(args).bfloat16()
+        elif args.model == 'BatteryGPTv1':
+            model = BatteryGPT_mask.Model(args).bfloat16()
         else:
             model = TimeLLM.Model(args).bfloat16()
 
@@ -183,7 +188,7 @@ if __name__=="__main__":
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience)
+        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience, filetime=filetime)
 
         trained_parameters = []
         for p in model.parameters():
@@ -201,9 +206,13 @@ if __name__=="__main__":
                                                 epochs=args.train_epochs,
                                                 max_lr=args.learning_rate)
 
-        # criterion = nn.MSELoss()
-        criterion = smape_loss()
-        mae_metric = nn.L1Loss()
+        if args.model == 'BatteryGPTv0':
+            criterion = nn.MSELoss()
+        elif args.model == 'BatteryGPTv1':
+            criterion = smape_loss()
+        else:
+            raise NotImplementedError
+        mae_metric = metric
 
         args.frequency_map = {
             'Yearly': 1,
@@ -226,12 +235,12 @@ if __name__=="__main__":
             model.train()
             epoch_time = time.time()
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(train_loader)):
-                print(i)
                 iter_count += 1
                 model_optim.zero_grad()
 
-                batch_x = batch_x.float().to(accelerator.device)
-                batch_y = batch_y.float().to(accelerator.device)
+                # 这里nvars包含最后一维的电能
+                batch_x = batch_x.float().to(accelerator.device)                # [bs, seq_len, nvars]
+                batch_y = batch_y.float().to(accelerator.device)                # [bs, label_len+pred_len, 1]
                 batch_x_mark = batch_x_mark.float().to(accelerator.device)
                 batch_y_mark = batch_y_mark.float().to(accelerator.device)
 
@@ -264,12 +273,16 @@ if __name__=="__main__":
                         outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                     f_dim = -1 if args.features == 'MS' else 0
-                    outputs = outputs[:, -args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -args.pred_len:, f_dim:]
+                    outputs = outputs[:, -args.pred_len:, f_dim:]   # 截掉label部分
+                    batch_y = batch_y[:, -args.pred_len:, f_dim:]   # 截掉label部分
 
                     batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
-                    loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
-                    
+
+                    # loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
+                    if args.on_server:
+                        loss = criterion(outputs, batch_y.to(torch.bfloat16))       # TODO：修改metric，mse不行
+                    else:
+                        loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -297,9 +310,14 @@ if __name__=="__main__":
             train_loss = np.average(train_loss)
             vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
             test_loss, test_mae_loss = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
-            accelerator.print(
-                "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
-                    epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss))
+            if not isinstance(test_mae_loss, float):
+                accelerator.print(
+                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} Test MAE Loss: {4:.7f} Test MSE Loss: {4:.7f} Test RMSE Loss: {4:.7f} Test MAPE Loss: {4:.7f} Test MSPE Loss: {4:.7f}".format(
+                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss[0], test_mae_loss[1], test_mae_loss[2], test_mae_loss[3], test_mae_loss[4]))
+            else:
+                accelerator.print(
+                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
+                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss))
 
             early_stopping(vali_loss, model, path)
             if early_stopping.early_stop:

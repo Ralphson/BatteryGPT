@@ -1,30 +1,37 @@
-model_name=BatteryGPT_mask
+# 总参数
 learning_rate=0.01
-on_server=true
-
-
+train_epochs=100
 llama_layers=32
-d_model=32
-d_ff=128
-des='Exp'
-comment='BatteryGPT-Masked_battery'
 
-# --multi_gpu 
-# 正式训练
+# 服务器设置  --multi_gpu 
+on_server=true
 num_workers=16
 master_port=00097
 num_process=1
+
+# mask-BatteryGPT
+task_name='long_term_forecast'      # 从上到下显示到setting中
+model_id='mask'
+model='BatteryGPTv1'
+data='mbatdata'
+des='Exp'
+comment='on_server' #
+d_model=32
+d_ff=128
 batch_size=8
-train_epochs=100
-accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery_temp.py \
+seq_len=24
+label_len=12
+pred_len=36
+accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery.py \
   --on_server $on_server \
-  --task_name long_term_forecast \
+  --task_name $task_name \
   --is_training 1 \
   --root_path ./dataset/my \
+  --data $data \
   --data_path trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv \
-  --model_id Battery \
-  --model $model_name \
-  --data masked_battery_temp \
+  --model_id $model_id \
+  --model $model \
+  --data masked_battery \
   --enc_in 11 \
   --dec_in 7 \
   --c_out 1 \
@@ -36,10 +43,9 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --llm_layers $llama_layers \
   --train_epochs $train_epochs \
   --model_comment $comment \
-  --num_workers $num_workers
-
-
-
-
+  --num_workers $num_workers \
+  --seq_len $seq_len \
+  --label_len $label_len \
+  --pred_len $pred_len
 
 

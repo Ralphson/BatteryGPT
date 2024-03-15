@@ -396,7 +396,7 @@ class Dataset_M4(Dataset):
 
 
 
-class Dataset_Masked_Battery(Dataset):
+class Dataset_Battery(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
                  target='OT', scale=True, timeenc=0, freq='h', percent=100,
@@ -530,7 +530,7 @@ class Dataset_Masked_Battery(Dataset):
 
 
 
-class Dataset_Battery(Dataset):
+class Dataset_Masked_Battery(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
                  target='OT', scale=True, timeenc=0, freq='h', percent=100,

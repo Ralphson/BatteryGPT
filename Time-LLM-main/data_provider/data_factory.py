@@ -8,8 +8,8 @@ data_dict = {
     'ETTm2': Dataset_ETT_minute,
     'custom': Dataset_Custom,
     'm4': Dataset_M4,
-    'masked_battery': Dataset_Masked_Battery,
-    'masked_battery_temp': Dataset_Battery
+    'batdata': Dataset_Battery,
+    'mbatdata': Dataset_Masked_Battery
 }
 
 
@@ -42,7 +42,7 @@ def data_provider(args, flag):
             freq=freq,
             seasonal_patterns=args.seasonal_patterns
         )
-    elif args.data == 'masked_battery':
+    elif args.data == 'batdata':
         data_set = Data(
             root_path=args.root_path,
             data_path=args.data_path,
@@ -58,7 +58,7 @@ def data_provider(args, flag):
             drop_bid=args.drop_bid,
             seq_limit=args.seq_limit
         )
-    elif args.data == 'masked_battery_temp':
+    elif args.data == 'mbatdata':
         data_set = Data(
             root_path=args.root_path,
             data_path=args.data_path,
