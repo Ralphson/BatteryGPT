@@ -36,7 +36,7 @@ def adjust_learning_rate(accelerator, optimizer, scheduler, epoch, args, printou
 
 
 class EarlyStopping:
-    def __init__(self, accelerator=None, patience=7, verbose=False, delta=0, save_mode=True):
+    def __init__(self, accelerator=None, patience=7, verbose=False, delta=0, save_mode=True, filetime=None):
         self.accelerator = accelerator
         self.patience = patience
         self.verbose = verbose
@@ -46,6 +46,7 @@ class EarlyStopping:
         self.val_loss_min = np.Inf
         self.delta = delta
         self.save_mode = save_mode
+        self.filetime = filetime
 
     def __call__(self, val_loss, model, path):
         score = -val_loss
@@ -78,9 +79,9 @@ class EarlyStopping:
 
         if self.accelerator is not None:
             model = self.accelerator.unwrap_model(model)
-            torch.save(model.state_dict(), path + '/' + 'checkpoint')
+            torch.save(model.state_dict(), path + '/' + self.filetime + '_checkpoint')
         else:
-            torch.save(model.state_dict(), path + '/' + 'checkpoint')
+            torch.save(model.state_dict(), path + '/' + self.filetime + '_checkpoint')
         self.val_loss_min = val_loss
 
 

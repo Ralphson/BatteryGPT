@@ -38,6 +38,7 @@ if __name__=="__main__":
     parser.add_argument('--model', type=str, required=False, default='BatteryGPT',
                         help='model name, options: [Autoformer, DLinear]')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
+    parser.add_argument('--filetime', type=str, default=filetime, help='file start time')
 
     # data loader
     parser.add_argument('--data', type=str, required=False, default='masked_battery', help='dataset type')
@@ -184,7 +185,7 @@ if __name__=="__main__":
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience)
+        early_stopping = EarlyStopping(accelerator=accelerator, patience=args.patience, filetime=filetime)
 
         trained_parameters = []
         for p in model.parameters():
