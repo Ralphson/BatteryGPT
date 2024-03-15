@@ -11,7 +11,7 @@ comment='BatteryGPT-Masked_battery'
 
 # --multi_gpu 
 # 正式训练
-num_workers=10
+num_workers=16
 master_port=00097
 num_process=1
 batch_size=8
