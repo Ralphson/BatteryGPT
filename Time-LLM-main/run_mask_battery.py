@@ -273,7 +273,7 @@ if __name__=="__main__":
 
                     # loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
                     if args.on_server:
-                        loss = criterion(outputs, batch_y.to(torch.bfloat16))
+                        loss = criterion(outputs, batch_y.to(torch.bfloat16))       # TODO：修改metric，mse不行
                     else:
                         loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
@@ -301,7 +301,7 @@ if __name__=="__main__":
 
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
+            vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)    # TODO：只显示一个mse，要多个
             test_loss, test_mae_loss = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
             accelerator.print(
                 "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
