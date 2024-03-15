@@ -9,13 +9,13 @@ d_ff=128
 des='Exp'
 comment='BatteryGPT-Masked_battery'
 
-
+# --multi_gpu 
 # 正式训练
 master_port=00097
-num_process=4
+num_process=1
 batch_size=8
 train_epochs=100
-accelerate launch --multi_gpu --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery.py \
+accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery.py \
   --on_server $on_server \
   --task_name long_term_forecast \
   --is_training 1 \
