@@ -151,9 +151,9 @@ class Model(nn.Module):
         n_vars = x_enc.shape[-1]
         source_embeddings = self.mapping_layer(self.word_embeddings.permute(1, 0)).permute(1, 0)
         x_enc = x_enc.permute(0, 2, 1).contiguous()                         # [batch_size, nvars, seq_len]
-        # x_mark_enc = x_mark_enc.permute(0, 2, 1).contiguous()               # [batch_size, nvars, seq_len]
-        enc_out, n_vars, x_mask = self.patch_embedding(x_enc.to(torch.bfloat16))
-        # enc_out, x_mask = self.seq_embedding(x_enc.to(torch.bfloat16), x_mark_enc)
+        x_mark_enc = x_mark_enc.permute(0, 2, 1).contiguous()               # [batch_size, nvars, seq_len]
+        enc_out, n_vars, x_mask = self.patch_embedding(x_enc.to(torch.bfloat16), x_mark_enc)
+        # enc_out, x_mask = self.seq_embedding(x_enc.to(torch.bfloat16), x_mark_enc)    # no_patch_embedding
         enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
         
 
@@ -228,11 +228,13 @@ class ReprogrammingLayer(nn.Module):
         scores = scale * scores
 
         # 掩码
-        # if x_mask is not None:
-        #     x_mask = x_mask.unsqueeze(1)[:,:,:,0].unsqueeze(-1)
-        #     x_mask = ~x_mask.to(torch.bool)
-        #      scores = scores.masked_fill(x_mask, float('-inf'))
-
+        if x_mask is not None:
+            x_mask = x_mask.unsqueeze(1)[:,:,:,0].unsqueeze(-1)
+            x_mask = ~x_mask.to(torch.bool)
+            scores = scores.masked_fill(x_mask, float('-inf'))
+        # print(torch.isnan(scores).any())    # false
+        # print(torch.isinf(scores).any())    # false
+        
         scores = torch.softmax(scores, dim=-1)
 
         A = self.dropout(scores)

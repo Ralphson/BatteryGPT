@@ -534,11 +534,11 @@ class Dataset_Battery(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
                  target='OT', scale=True, timeenc=0, freq='h', percent=100,
-                 seasonal_patterns=None, cutting_rate=1.2, drop_bid=False):
+                 seasonal_patterns=None, cutting_rate=1.2, drop_bid=False, seq_limit=0):
         if size == None:
-            self.seq_len = 96    # 训练长度
-            self.label_len = 48  # 重叠部分,用于预测序列回看知识
-            self.pred_len = 96   # 预测
+            self.seq_len = 24    # 训练长度
+            self.label_len = 12  # 重叠部分,用于预测序列回看知识
+            self.pred_len = 36   # 预测
         else:
             self.seq_len = size[0]
             self.label_len = size[1]
@@ -550,6 +550,7 @@ class Dataset_Battery(Dataset):
 
         self.drop_bid = drop_bid    # TODO:battery_id可能需要独热编码,考虑drop或者不进行归一化
         self.cutting_rate = cutting_rate
+        self.seq_limit = seq_limit
         self.percent = percent
         self.features = features
         self.target = target
@@ -569,6 +570,9 @@ class Dataset_Battery(Dataset):
 
         # 按照电池+轮次打乱
         indexed_df = df_raw.set_index(['battery_id', 'Cycle_Index'])
+        indexed_df['luncishu'] = df_raw.groupby(['battery_id', 'Cycle_Index']).count()['cycle_test_time']
+        indexed_df = indexed_df[indexed_df['luncishu'] > self.seq_limit]   # 只保留<48>以上的轮次
+        indexed_df = indexed_df.drop('luncishu', axis=1)        # 删除luncishu
         shuffled_index = indexed_df.index.unique().values
         random.shuffle(shuffled_index)
         shuffled_index = pd.Index(shuffled_index)
@@ -619,9 +623,6 @@ class Dataset_Battery(Dataset):
 
         # 等长数据
         self.data = np.array([self.data[index] for index in self.recover_index_list], dtype=object)
-
-        # TODO
-
         print('data-{} load completed: {}'.format(self.set_type, self.data.shape))
 
     def __getitem__(self, index):
@@ -631,9 +632,14 @@ class Dataset_Battery(Dataset):
         outsample_mask = np.zeros((self.label_len + self.pred_len, 1))
 
         seq = self.data[index]
-        cut_point = np.random.randint(low=max(1, len(seq) - int(self.pred_len * self.cutting_rate)),
-                                      high=len(seq),
-                                      size=1)[0]    # 切分点,
+        try:
+            low = max(1, len(seq) - int(self.pred_len * self.cutting_rate))
+            high = len(seq)
+            cut_point = np.random.randint(low=low,
+                                          high=high,
+                                          size=1)[0]    # 切分点,
+        except:
+            raise ValueError("index={}, low={}, high={}".format(index, low, high), len(seq))
 
         # 输入padding mask
         insample_window = seq[max(0, cut_point - self.seq_len): cut_point]
