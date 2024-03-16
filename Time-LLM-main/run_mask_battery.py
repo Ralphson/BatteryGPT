@@ -16,8 +16,7 @@ from log import set_logger
 
 from data_provider.data_factory import data_provider
 from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.losses import smape_loss, mase_loss, mape_loss
-from utils.metrics import metric
+from utils.losses import smape_loss, mase_loss, mape_loss, Metrics, mask_Metrics
 
 
 
@@ -122,7 +121,7 @@ if __name__=="__main__":
         accelerator = Accelerator(mixed_precision='bf16')
 
     # 初始化logger设置
-    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
+    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}-{}'.format(
         args.task_name,
         args.model_id,
         args.model,
@@ -139,14 +138,15 @@ if __name__=="__main__":
         args.factor,
         args.embed,
         args.des, 
-        args.itr)
+        args.itr,
+        args.model_comment)
     set_logger(args.logger + '/' + setting + '/' + filetime + '.log')
     print('Args in experiment:')
     print(args)
 
     for ii in range(args.itr):
         # setting record of experiments
-        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
+        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}-{}'.format(
             args.task_name,
             args.model_id,
             args.model,
@@ -162,7 +162,9 @@ if __name__=="__main__":
             args.d_ff,
             args.factor,
             args.embed,
-            args.des, ii)
+            args.des, 
+            ii,
+            args.model_comment)
 
         train_data, train_loader = data_provider(args, 'train')
         vali_data, vali_loader = data_provider(args, 'val')
@@ -172,15 +174,14 @@ if __name__=="__main__":
             model = Autoformer.Model(args).bfloat16()
         elif args.model == 'DLinear':
             model = DLinear.Model(args).bfloat16()
-        elif args.model == 'BatteryGPT':
+        elif args.model == 'BatteryGPTv0':
             model = BatteryGPT.Model(args).bfloat16()
-        elif args.model == 'BatteryGPT_mask':
+        elif args.model == 'BatteryGPTv1':
             model = BatteryGPT_mask.Model(args).bfloat16()
         else:
             model = TimeLLM.Model(args).bfloat16()
 
-        path = os.path.join(args.checkpoints,
-                            setting + '-' + args.model_comment)  # unique checkpoint saving path
+        path = os.path.join(args.checkpoints, setting)  # unique checkpoint saving path
         args.content = load_content(args)
         if not os.path.exists(path) and accelerator.is_local_main_process:
             os.makedirs(path)
@@ -207,7 +208,7 @@ if __name__=="__main__":
                                                 max_lr=args.learning_rate)
 
         criterion = smape_loss()
-        mae_metric = metric
+        metrics = mask_Metrics()
 
         args.frequency_map = {
             'Yearly': 1,
@@ -302,16 +303,11 @@ if __name__=="__main__":
 
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
-            test_loss, test_mae_loss = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
-            if not isinstance(test_mae_loss, float):
-                accelerator.print(
-                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} Test MAE Loss: {4:.7f} Test MSE Loss: {4:.7f} Test RMSE Loss: {4:.7f} Test MAPE Loss: {4:.7f} Test MSPE Loss: {4:.7f}".format(
-                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss[0], test_mae_loss[1], test_mae_loss[2], test_mae_loss[3], test_mae_loss[4]))
-            else:
-                accelerator.print(
-                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
-                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss))
+            vali_loss, vali_metrics = vali(args, accelerator, model, vali_data, vali_loader, criterion, metrics)
+            test_loss, test_metrics = vali(args, accelerator, model, test_data, test_loader, criterion, metrics)
+            accelerator.print(
+                "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} Test MSE Loss: {4:.7f} Test MAE Loss: {5:.7f} Test RMSE Loss: {6:.7f} Test MAPE Loss: {7:.7f} Test MSPE Loss: {8:.7f}".format(
+                    epoch + 1, train_loss, vali_loss, test_loss, test_metrics[0], test_metrics[1], test_metrics[2], test_metrics[3], test_metrics[4]))
 
             early_stopping(vali_loss, model, path)
             if early_stopping.early_stop:

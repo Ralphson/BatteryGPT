@@ -87,3 +87,52 @@ class mase_loss(nn.Module):
         masep = t.mean(t.abs(insample[:, freq:] - insample[:, :-freq]), dim=1)
         masked_masep_inv = divide_no_nan(mask, masep[:, None])
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
+    
+
+class Metrics(nn.Module):
+    def __init__(self):
+        super(Metrics, self).__init__()
+        
+    def forward(self, yhat: t.Tensor, y: t.Tensor):
+        """
+        MSE, MAE, RMSE, MAPE, MSPE
+        
+        :param yhat: output of model
+        :param y: ground truth
+        """
+        serror = (yhat - y) ** 2
+        aerror = t.abs(yhat - y)
+        
+        mse = t.mean(serror)
+        mae = t.mean(aerror)
+        rmse = t.sqrt(mse)
+        mape = t.mean(aerror / (y + 1e-8))    # 添加一个小的值，避免除以零
+        mspe = t.mean((aerror / (y + 1e-8)) ** 2)
+        
+        return mse, mae, rmse, mape, mspe
+        
+
+class mask_Metrics(nn.Module):
+    def __init__(self):
+        super(mask_Metrics, self).__init__()
+        
+    def forward(self, yhat: t.Tensor, y: t.Tensor, mask: t.Tensor):
+        """
+        masked MSE, MAE, RMSE, MAPE, MSPE
+        
+        :param yhat: output of model
+        :param y: ground truth
+        :param mask: mask of yhat
+        """
+        serror = (yhat - y) ** 2
+        aerror = t.abs(yhat - y)
+        smask = t.sum(mask)
+        
+        mse = t.sum(serror * mask) / smask
+        mae = t.sum(aerror * mask) / smask
+        rmse = t.sqrt(mse)
+        mape = t.sum(aerror / (y+1e-8) * mask) / smask    # 添加一个小的值，避免除以零
+        mspe = t.mean((aerror / (y+1e-8)) ** 2 * mask)
+        
+        return mse, mae, rmse, mape, mspe
+        

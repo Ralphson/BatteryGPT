@@ -16,8 +16,7 @@ from log import set_logger
 
 from data_provider.data_factory import data_provider
 from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.losses import smape_loss, mase_loss, mape_loss
-from utils.metrics import metric
+from utils.losses import smape_loss, mase_loss, mape_loss, Metrics
 
 
 
@@ -208,11 +207,9 @@ if __name__=="__main__":
 
         if args.model == 'BatteryGPTv0':
             criterion = nn.MSELoss()
-        elif args.model == 'BatteryGPTv1':
-            criterion = smape_loss()
         else:
             raise NotImplementedError
-        mae_metric = metric
+        mae_metric = Metrics()
 
         args.frequency_map = {
             'Yearly': 1,
@@ -293,7 +290,7 @@ if __name__=="__main__":
                     accelerator.print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
-
+                
                 if args.use_amp:
                     scaler.scale(loss).backward()
                     scaler.step(model_optim)
@@ -308,16 +305,11 @@ if __name__=="__main__":
 
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss, vali_mae_loss = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
-            test_loss, test_mae_loss = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
-            if not isinstance(test_mae_loss, float):
-                accelerator.print(
-                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} Test MAE Loss: {4:.7f} Test MSE Loss: {4:.7f} Test RMSE Loss: {4:.7f} Test MAPE Loss: {4:.7f} Test MSPE Loss: {4:.7f}".format(
-                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss[0], test_mae_loss[1], test_mae_loss[2], test_mae_loss[3], test_mae_loss[4]))
-            else:
-                accelerator.print(
-                    "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} MAE Loss: {4:.7f}".format(
-                        epoch + 1, train_loss, vali_loss, test_loss, test_mae_loss))
+            vali_loss, vali_metrics = vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric)
+            test_loss, test_metrics = vali(args, accelerator, model, test_data, test_loader, criterion, mae_metric)
+            accelerator.print(
+                "Epoch: {0} | Train Loss: {1:.7f} Vali Loss: {2:.7f} Test Loss: {3:.7f} Test MSE Loss: {4:.7f} Test MAE Loss: {5:.7f} Test RMSE Loss: {6:.7f} Test MAPE Loss: {7:.7f} Test MSPE Loss: {8:.7f}".format(
+                    epoch + 1, train_loss, vali_loss, test_loss, test_metrics[0], test_metrics[1], test_metrics[2], test_metrics[3], test_metrics[4]))
 
             early_stopping(vali_loss, model, path)
             if early_stopping.early_stop:

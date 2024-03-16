@@ -9,9 +9,8 @@ num_workers=16
 master_port=00097
 num_process=1
 
-
 # 无mask-BatteryGPT
-task_name='long_term_forecast'      # 从上到下显示到setting中
+task_name='base'      # 从上到下显示到setting中
 model_id='unmasked'
 model='BatteryGPTv0'
 data='batdata'
@@ -32,7 +31,7 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --data_path trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv \
   --model_id $model_id \
   --model $model \
-  --data masked_battery \
+  --data $data \
   --enc_in 11 \
   --dec_in 7 \
   --c_out 1 \
@@ -48,3 +47,10 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --seq_len $seq_len \
   --label_len $label_len \
   --pred_len $pred_len
+
+
+# 延迟30s
+sleep 30s
+
+# 关机
+shutdown -h now

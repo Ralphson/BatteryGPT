@@ -134,16 +134,20 @@ def cal_accuracy(y_pred, y_true):
 def del_files(dir_path):
     shutil.rmtree(dir_path)
 
-def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric):
+def vali(args, accelerator, model, vali_data, vali_loader, criterion, metrics):
     total_loss = []
     total_mae_loss = []
+    total_mse_loss = []
+    total_rmse_loss = []
+    total_mape_loss = []
+    total_mspe_loss = []
     axis1 = None
     axis2 = None
     model.eval()
     with torch.no_grad():
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
             batch_x = batch_x.float().to(accelerator.device)
-            batch_y = batch_y.float()
+            batch_y = batch_y.float().to(accelerator.device)
 
             batch_x_mark = batch_x_mark.float().to(accelerator.device)
             batch_y_mark = batch_y_mark.float().to(accelerator.device)
@@ -167,31 +171,37 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, mae_metric
             # self.accelerator.wait_for_everyone()
             f_dim = -1 if args.features == 'MS' else 0
             outputs = outputs[:, -args.pred_len:, f_dim:]
-            batch_y = batch_y[:, -args.pred_len:, f_dim:].to(accelerator.device)
-
+            batch_y = batch_y[:, -args.pred_len:, f_dim:]
+            batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
             pred = outputs.detach()
             true = batch_y.detach()
 
             if args.model == 'BatteryGPTv0':
                 loss = criterion(pred, true)
-                mae_loss = mae_metric(pred, true)
-                total_loss.append(loss.item())
-                total_mae_loss.append(mae_loss.item())
-                axis1, axis2 = None, None
+                mse, mae, rmse, mape, mspe = metrics(pred, true)
             elif args.model == 'BatteryGPTv1':
                 loss = criterion(batch_x, args.frequency_map, pred, true, batch_y_mark)
-                mae_loss = mae_metric(pred, true)
-                total_loss.append(loss.item())
-                total_mae_loss.append(mae_loss)
-                axis1, axis2 = None, 0
+                mse, mae, rmse, mape, mspe = metrics(pred, true, batch_y_mark)
+                
             else:
                 raise NotImplementedError
-
-    total_loss = np.average(total_loss, axis1)
-    total_mae_loss = np.average(total_mae_loss, axis2)
+            
+            total_loss.append(loss.item())
+            total_mse_loss.append(mse.item())
+            total_mae_loss.append(mae.item())
+            total_rmse_loss.append(rmse.item())
+            total_mape_loss.append(mape.item())
+            total_mspe_loss.append(mspe.item())
+            
+    total_loss = np.average(total_loss)
+    total_mse_loss = np.mean(total_mse_loss)
+    total_mae_loss = np.mean(total_mae_loss)
+    total_rmse_loss = np.mean(total_rmse_loss)
+    total_mape_loss = np.mean(total_mape_loss)
+    total_mspe_loss = np.mean(total_mspe_loss)
 
     model.train()
-    return total_loss, total_mae_loss
+    return total_loss, (total_mse_loss, total_mae_loss, total_rmse_loss, total_mape_loss, total_mspe_loss)
 
 
 def test(args, accelerator, model, train_loader, vali_loader, criterion):
