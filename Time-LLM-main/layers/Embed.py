@@ -192,7 +192,7 @@ class PatchEmbedding(nn.Module):
             x_mask = torch.reshape(x_mask, (x_mask.shape[0] * x_mask.shape[1], \
                                         x_mask.shape[2], x_mask.shape[3]))                  # x_mask: [bs * nvars, patch_num, patch_len]
 
-            # x = self.value_embedding(x)                                                     # x: [bs * nvars, patch_num, d_model]
+            x = self.value_embedding(x)                                                     # x: [bs * nvars, patch_num, d_model]
             # x_mask = self.value_embedding(x_mask)                                           # x_mask: [bs * nvars, patch_num, d_model]
             return self.dropout(x), n_vars, x_mask
 
