@@ -1,7 +1,6 @@
 import numpy as np
 import torch as t
 
-
 def RSE(pred, true):
     return t.sqrt(t.sum((true - pred) ** 2)) / t.sqrt(t.sum((true - true.mean()) ** 2))
 
