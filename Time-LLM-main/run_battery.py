@@ -277,7 +277,7 @@ if __name__=="__main__":
 
                     # loss = criterion(batch_x, args.frequency_map, outputs, batch_y, batch_y_mark)
                     if args.on_server:
-                        loss = criterion(outputs, batch_y.to(torch.bfloat16))       # TODO：修改metric，mse不行
+                        loss = criterion(outputs, batch_y.to(torch.bfloat16))
                     else:
                         loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())

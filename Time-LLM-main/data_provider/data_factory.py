@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_Masked_Battery, Dataset_Battery
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, Dataset_Masked_Battery, Dataset_Battery, Dataset_Masked_Battery_from_0
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -9,7 +9,8 @@ data_dict = {
     'custom': Dataset_Custom,
     'm4': Dataset_M4,
     'batdata': Dataset_Battery,
-    'mbatdata': Dataset_Masked_Battery
+    'mbatdata': Dataset_Masked_Battery,
+    'batdata_from_0': Dataset_Masked_Battery_from_0
 }
 
 
@@ -42,23 +43,7 @@ def data_provider(args, flag):
             freq=freq,
             seasonal_patterns=args.seasonal_patterns
         )
-    elif args.data == 'batdata':
-        data_set = Data(
-            root_path=args.root_path,
-            data_path=args.data_path,
-            flag=flag,
-            size=[args.seq_len, args.label_len, args.pred_len],
-            features=args.features,
-            target=args.target,
-            timeenc=timeenc,
-            freq=freq,
-            percent=percent,
-            seasonal_patterns=args.seasonal_patterns,
-            cutting_rate=args.cutting_rate,
-            drop_bid=args.drop_bid,
-            seq_limit=args.seq_limit
-        )
-    elif args.data == 'mbatdata':
+    elif args.data == 'batdata' or args.data == 'mbatdata' or args.data == 'batdata_from_0':
         data_set = Data(
             root_path=args.root_path,
             data_path=args.data_path,

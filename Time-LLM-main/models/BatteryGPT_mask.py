@@ -156,12 +156,12 @@ class Model(nn.Module):
         x_mark_enc = x_mark_enc.permute(0, 2, 1).contiguous()               # [batch_size, nvars, seq_len]
         enc_out, n_vars, x_mask = self.patch_embedding(x_enc.to(torch.bfloat16), x_mark_enc)
         # enc_out, x_mask = self.seq_embedding(x_enc.to(torch.bfloat16), x_mark_enc)    # no_patch_embedding
-        enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)
+        enc_out = self.reprogramming_layer(enc_out, source_embeddings, source_embeddings)   # # [bs, seq_len, heads, d_ff]
         
 
         # 数据和prompt一起进入骨干网络训练
         llama_enc_out = torch.cat([prompt_embeddings, enc_out], dim=1)
-        dec_out = self.llama(inputs_embeds=llama_enc_out).last_hidden_state
+        dec_out = self.llama(inputs_embeds=llama_enc_out).last_hidden_state     # TODO:backbone输出的数据维度
         dec_out = dec_out[:, :, :self.d_ff]
         dec_out = torch.reshape(
             dec_out, (-1, n_vars, dec_out.shape[-2], dec_out.shape[-1]))
@@ -240,6 +240,6 @@ class ReprogrammingLayer(nn.Module):
         scores = torch.softmax(scores, dim=-1)
 
         A = self.dropout(scores)
-        reprogramming_embedding = torch.einsum("bhls,she->blhe", A, value_embedding)
+        reprogramming_embedding = torch.einsum("bhls,she->blhe", A, value_embedding)        # [bs, seq_len, heads, d_ff]
 
         return reprogramming_embedding

@@ -35,13 +35,13 @@ if __name__=="__main__":
     parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=False, default='mask', help='model id')
     parser.add_argument('--model_comment', type=str, required=False, default='on_local', help='prefix when saving test results')
-    parser.add_argument('--model', type=str, required=False, default='BatteryGPTv1',
+    parser.add_argument('--model', type=str, required=False, default='BatteryGPTv0',
                         help='model name, options: [Autoformer, DLinear]')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     parser.add_argument('--filetime', type=str, default=filetime, help='file start time')
 
     # data loader
-    parser.add_argument('--data', type=str, required=False, default='mbatdata', help='dataset type')
+    parser.add_argument('--data', type=str, required=False, default='batdata_from_0', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./dataset/my', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv', help='data file')
     parser.add_argument('--drop_bid', type=int, default=0)
@@ -64,7 +64,7 @@ if __name__=="__main__":
     parser.add_argument('--seq_limit', type=int, default=48, help='raw sequence length')
     parser.add_argument('--seq_len', type=int, default=24, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=12, help='start token length')
-    parser.add_argument('--pred_len', type=int, default=36, help='prediction sequence length')
+    parser.add_argument('--pred_len', type=int, default=48, help='prediction sequence length')
     parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
 
     # model define
@@ -270,8 +270,8 @@ if __name__=="__main__":
 
                     f_dim = -1 if args.features == 'MS' else 0
                     
-                    outputs = outputs[:, -args.pred_len:, f_dim:]   # 截掉label部分
-                    batch_y = batch_y[:, -args.pred_len:, f_dim:]   # 截掉label部分
+                    outputs = outputs[:, -args.pred_len:, f_dim:]   # 截掉前面的label_len部分
+                    batch_y = batch_y[:, -args.pred_len:, f_dim:]
                     batch_y_mark = batch_y_mark[:, -args.pred_len:, f_dim:]
                     
                     if args.on_server:

@@ -48,9 +48,10 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --label_len $label_len \
   --pred_len $pred_len
 
-
-# 延迟30s
-sleep 30s
+echo '>>>>>>>>>>>>>>>finished'
+# 延迟120s
+sleep 120s
+echo '<<<<<<<<<<<<<<<finished'
 
 # 关机
 shutdown -h now
