@@ -2,6 +2,7 @@
 pretrained_model/
 cache/
 dataset/
+*.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
