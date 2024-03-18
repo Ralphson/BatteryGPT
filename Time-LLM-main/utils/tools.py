@@ -176,15 +176,12 @@ def vali(args, accelerator, model, vali_data, vali_loader, criterion, metrics):
             pred = outputs.detach()
             true = batch_y.detach()
 
-            if args.model == 'BatteryGPTv0':
-                loss = criterion(pred, true)
-                mse, mae, rmse, mape, mspe = metrics(pred, true)
-            elif args.model == 'BatteryGPTv1':
+            if args.cal_mask:
                 loss = criterion(batch_x, args.frequency_map, pred, true, batch_y_mark)
                 mse, mae, rmse, mape, mspe = metrics(pred, true, batch_y_mark)
-                
             else:
-                raise NotImplementedError
+                loss = criterion(pred, true)
+                mse, mae, rmse, mape, mspe = metrics(pred, true)
             
             total_loss.append(loss.item())
             total_mse_loss.append(mse.item())

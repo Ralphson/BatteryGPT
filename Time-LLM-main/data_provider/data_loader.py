@@ -666,7 +666,7 @@ class Dataset_Masked_Battery(Dataset):
 class Dataset_Masked_Battery_from_0(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', percent=100,
+                 target='OT', scale=1, timeenc=0, freq='h', percent=100,
                  seasonal_patterns=None, cutting_rate=1.2, drop_bid=False, seq_limit=0):
         if size == None:
             self.seq_len = 24    # 训练长度
@@ -744,7 +744,8 @@ class Dataset_Masked_Battery_from_0(Dataset):
 
         # 归一化
         scaler = StandardScaler()
-        if self.scale:
+        if self.scale == 1:
+            print('do scaling...')
             train_data = get_data(indexed_df, shuffled_index, border1s[0], border2s[0])
             train_data = train_data.reset_index()
             if self.drop_bid:
@@ -756,7 +757,7 @@ class Dataset_Masked_Battery_from_0(Dataset):
 
         # 等长数据
         self.data = np.array([self.data[index] for index in self.recover_index_list], dtype=object)
-        print('data-{} load completed: {}'.format(self.set_type, self.data.shape))
+        print('data-{} load completed: {} from 0'.format(self.set_type, self.data.shape))
 
     def __getitem__(self, index):
         insample = np.zeros((self.seq_len, 11))

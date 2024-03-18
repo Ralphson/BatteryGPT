@@ -9,7 +9,7 @@ num_workers=16
 master_port=00097
 num_process=1
 
-# mask-BatteryGPT
+# b2
 task_name='base'      # 从上到下显示到setting中
 model_id='mask'
 model='BatteryGPTv1'
@@ -22,6 +22,8 @@ batch_size=8
 seq_len=24
 label_len=12
 pred_len=36
+scale_data=1         # 原始数据归一化
+cal_mask=1           # mask数据应该计算掩码损失
 accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery.py \
   --on_server $on_server \
   --task_name $task_name \
@@ -46,7 +48,10 @@ accelerate launch --mixed_precision bf16 --num_processes $num_process --main_pro
   --num_workers $num_workers \
   --seq_len $seq_len \
   --label_len $label_len \
-  --pred_len $pred_len
+  --pred_len $pred_len \
+  --scale_data $scale_data \
+  --cal_mask $cal_mask
+  
 
 echo '>>>>>>>>>>>>>>>finished'
 # 延迟120s

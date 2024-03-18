@@ -45,6 +45,8 @@ if __name__=="__main__":
     parser.add_argument('--root_path', type=str, default='./dataset/my', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv', help='data file')
     parser.add_argument('--drop_bid', type=int, default=0)
+    parser.add_argument('--scale_data', type=int, default=1,  help='do dataset scaleing?')
+    parser.add_argument('--cal_mask', type=int, default=1,  help='cal y mask?')
     parser.add_argument('--cutting_rate', type=float, default=1.2)
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; '
@@ -205,12 +207,12 @@ if __name__=="__main__":
                                                 epochs=args.train_epochs,
                                                 max_lr=args.learning_rate)
 
-        if args.model == 'BatteryGPTv0':
-            criterion = nn.MSELoss()
+        if args.cal_mask:
+            raise
         else:
-            raise NotImplementedError
-        mae_metric = Metrics()
-
+            criterion = nn.MSELoss()
+            mae_metric = Metrics()
+            
         args.frequency_map = {
             'Yearly': 1,
             'Quarterly': 4,

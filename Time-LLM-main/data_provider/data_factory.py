@@ -57,7 +57,8 @@ def data_provider(args, flag):
             seasonal_patterns=args.seasonal_patterns,
             cutting_rate=args.cutting_rate,
             drop_bid=args.drop_bid,
-            seq_limit=args.seq_limit
+            seq_limit=args.seq_limit,
+            scale=args.scale_data
         )
     else:
         data_set = Data(

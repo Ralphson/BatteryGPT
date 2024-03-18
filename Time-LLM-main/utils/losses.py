@@ -88,6 +88,16 @@ class mase_loss(nn.Module):
         masked_masep_inv = divide_no_nan(mask, masep[:, None])
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
     
+    
+    
+class mmse_loss(nn.Module):
+    def __init__(self):
+        super(mmse_loss, self).__init__()
+        
+    def forward(self, yhat, y):
+        mse = t.sum((yhat - y) ** 2 * mask) / t.sum(mask)
+        return mse
+    
 
 class Metrics(nn.Module):
     def __init__(self):

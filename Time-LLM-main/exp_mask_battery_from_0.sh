@@ -9,22 +9,22 @@ num_workers=16
 master_port=00097
 num_process=1
 
-# 无mask-BatteryGPT
+# b3
 task_name='base'      # 从上到下显示到setting中
-model_id='unmasked'
+model_id='mask_from0'
 model='BatteryGPTv0'
-data='batdata'
+data='batdata_from_0'
 des='Exp'
 comment='on_server' #
 d_model=32
 d_ff=128
 batch_size=8
-seq_len=18
-label_len=9
-pred_len=30
-scale_data=1
-cal_mask=0
-accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_battery.py \
+seq_len=24
+label_len=12
+pred_len=48
+scale_data=0         # 不归一化
+cal_mask=1           # mask数据应该计算掩码损失
+accelerate launch --mixed_precision bf16 --num_processes $num_process --main_process_port $master_port run_mask_battery.py \
   --on_server $on_server \
   --task_name $task_name \
   --is_training 1 \

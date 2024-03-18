@@ -11,6 +11,7 @@ class Logger:
     def write(self, message):
         self.terminal.write(message)  # 屏幕输出
         self.logfile.write(message)  # 文件输出
+        self.logfile.flush()
 
     def close(self):
         sys.stdout = self.terminal  # 还原标准输出流

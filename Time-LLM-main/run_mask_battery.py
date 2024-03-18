@@ -16,7 +16,7 @@ from log import set_logger
 
 from data_provider.data_factory import data_provider
 from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content
-from utils.losses import smape_loss, mase_loss, mape_loss, Metrics, mask_Metrics
+from utils.losses import smape_loss, mase_loss, mape_loss, Metrics, mask_Metrics, mmse_loss
 
 
 
@@ -44,6 +44,8 @@ if __name__=="__main__":
     parser.add_argument('--data', type=str, required=False, default='batdata_from_0', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./dataset/my', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='trimmed_LX3_ss0_se100_cr05_C_V_T_vs_CE.csv', help='data file')
+    parser.add_argument('--scale_data', type=int, default=1,  help='do dataset scaleing?')
+    parser.add_argument('--cal_mask', type=int, default=1,  help='cal y mask?')
     parser.add_argument('--drop_bid', type=int, default=0)
     parser.add_argument('--cutting_rate', type=float, default=1.2)
     parser.add_argument('--features', type=str, default='M',
@@ -97,7 +99,6 @@ if __name__=="__main__":
     parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
-    parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--pct_start', type=float, default=0.2, help='pct_start')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
@@ -207,8 +208,12 @@ if __name__=="__main__":
                                                 epochs=args.train_epochs,
                                                 max_lr=args.learning_rate)
 
-        criterion = smape_loss()
-        metrics = mask_Metrics()
+        if args.cal_mask:
+            criterion = smape_loss() 
+            metrics = mask_Metrics()
+        else:
+            raise 
+            criterion = nn.mmse_loss()    # 还是smape好一点
 
         args.frequency_map = {
             'Yearly': 1,
@@ -300,7 +305,7 @@ if __name__=="__main__":
                 if args.lradj == 'TST':
                     adjust_learning_rate(accelerator, model_optim, scheduler, epoch + 1, args, printout=False)
                     scheduler.step()
-
+                    
             accelerator.print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             vali_loss, vali_metrics = vali(args, accelerator, model, vali_data, vali_loader, criterion, metrics)
