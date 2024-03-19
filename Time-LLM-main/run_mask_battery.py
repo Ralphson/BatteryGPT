@@ -209,7 +209,7 @@ if __name__=="__main__":
                                                 max_lr=args.learning_rate)
 
         if args.cal_mask:
-            criterion = smape_loss() 
+            criterion = smape_loss()    # TODO：换成mmse
             metrics = mask_Metrics()
         else:
             raise 
