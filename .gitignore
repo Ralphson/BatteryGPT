@@ -2,6 +2,7 @@
 pretrained_model/
 cache/
 dataset/
+analysis/
 *.xlsx
 
 # Byte-compiled / optimized / DLL files
